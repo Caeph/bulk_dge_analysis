@@ -165,12 +165,14 @@ def plot_volcano(res, alpha, fc_thr, annotate_extremes_no):
 _go_analysis_labeling = {
     "GO:BP": ["GO biological process", "blue"],
     "GO:MF": ["GO molecular function", 'green'],
-    "GO:CC": ["GO cellular component", 'orange']
+    "GO:CC": ["GO cellular component", 'orange'],
+    "KEGG": ['KEGG', 'magenta']
 }
 
 def plot_enrichment(enriched_processes_df, label, ntop):
     # counts = enriched_processes_df[['source', 'name']].groupby('source').count().to_dict()['name']
-    fig, axes = plt.subplots(nrows=3,
+    seen_sources = enriched_processes_df['source'].unique()
+    fig, axes = plt.subplots(nrows=len(seen_sources),
                              ncols=1,
                              sharex=True,
                              figsize=(15, 10),)
@@ -197,7 +199,7 @@ def plot_enrichment(enriched_processes_df, label, ntop):
         ax.set_xlabel("gene ratio")
 
     fig.suptitle(
-        f"GO enrichment analysis: {label}",
+        f"Enrichment analysis: {label}",
         fontsize=20,  # larger font
         fontweight="bold",  # bold
         x=0.01,  # move to left (0 = far left, 0.5 = center)
