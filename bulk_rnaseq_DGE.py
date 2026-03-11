@@ -109,18 +109,20 @@ def pairwise_enrichment_analysis(res, parameters,
         fig = plot_enrichment(upregulated_enrichment, "upregulated genes", ntop)
         reporter.send_text(f"As upregulated genes, we understand all those with adjusted p-val < {alpha},"
                            f"log2 fold change > {fc_thr}.")
-        reporter.send_figure(fig, "Upregulated genes: gene ratio bar plot",
-                             save_figure_path=os.path.join(figure_dir,
-                                    f"upregulated_enrichment__{contrast_sample1}_vs_{contrast_sample2}.png"))
-        plt.close(fig)
+        if fig is not None:
+            reporter.send_figure(fig, "Upregulated genes: gene ratio bar plot",
+                                 save_figure_path=os.path.join(figure_dir,
+                                        f"upregulated_enrichment__{contrast_sample1}_vs_{contrast_sample2}.png"))
+            plt.close(fig)
 
         fig = plot_enrichment(downregulated_enrichment, "downregulated genes", ntop)
         reporter.send_text(f"As downregulated genes, we understand all those with adjusted p-val < {alpha},"
                            f"log2 fold change < -{fc_thr}.")
-        reporter.send_figure(fig, "Downregulated genes: gene ratio bar plot",
-                             save_figure_path=os.path.join(figure_dir,
-                                                           f"downregulated_enrichment__{contrast_sample1}_vs_{contrast_sample2}.png"))
-        plt.close(fig)
+        if fig is not None:
+            reporter.send_figure(fig, "Downregulated genes: gene ratio bar plot",
+                                 save_figure_path=os.path.join(figure_dir,
+                                                               f"downregulated_enrichment__{contrast_sample1}_vs_{contrast_sample2}.png"))
+            plt.close(fig)
 
 
 def pairwise_analysis(reporter, dds,

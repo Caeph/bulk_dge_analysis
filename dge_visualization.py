@@ -172,6 +172,8 @@ _go_analysis_labeling = {
 def plot_enrichment(enriched_processes_df, label, ntop):
     # counts = enriched_processes_df[['source', 'name']].groupby('source').count().to_dict()['name']
     seen_sources = enriched_processes_df['source'].unique()
+    if len(seen_sources) == 0:
+        return None
     fig, axes = plt.subplots(nrows=len(seen_sources),
                              ncols=1,
                              sharex=True,
