@@ -178,6 +178,8 @@ def plot_enrichment(enriched_processes_df, label, ntop):
                              ncols=1,
                              sharex=True,
                              figsize=(15, 10),)
+    if len(seen_sources) == 1:
+        axes=[axes]
     i = 0
     for name, group in enriched_processes_df.sort_values('name').groupby("source"):
         ax = axes[i]
