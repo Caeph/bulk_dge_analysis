@@ -73,8 +73,7 @@ def combine_to_input(count_table_df,
     samples_df.index = samples_df['sample']
     samples_df.sort_index(inplace=True)
 
-    print(f"Loaded samples, seeing {len(samples_df)} with {
-        len(samples_df["condition"].unique())} unique conditions.")
+    print(f"Loaded samples, seeing {len(samples_df)} with {len(samples_df["condition"].unique())} unique conditions.")
 
     count_table_df.index = count_table_df['gene_id']
     count_table_df = count_table_df.drop(

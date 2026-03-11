@@ -27,14 +27,6 @@ class HTMLReporter:
             h2(section_title)
 
     def send_figure(self, fig, caption, save_figure_path=None):
-        if fig is None:
-            with self.doc:
-                with div():
-                    p(caption)
-                    p("no data")
-            return
-
-
         if save_figure_path:
             os.makedirs(os.path.dirname(save_figure_path) or ".", exist_ok=True)
             fig.savefig(save_figure_path, bbox_inches="tight")
