@@ -1,4 +1,5 @@
 deployment/
+*.sbatch
 
 .idea
 __pycache__
