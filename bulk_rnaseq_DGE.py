@@ -95,26 +95,20 @@ def pairwise_enrichment_analysis(res, parameters,
 
         # plot
         reporter.start_section("Enrichment analysis")
-
         ntop = parameters.annotate_extremes_no
-
         reporter.send_text(f"""
         Gene ratio is calculated as the ratio between genes corresponding with the GO term AND
         all upregulated/downregulated genes. The closer to one, the more important the result.
         Only top {ntop} results with p-value > 0.05 are shown. All significant are stored in tsv files.
         """)
-
-
-
-        fig = plot_enrichment(upregulated_enrichment, "upregulated genes", ntop)
+        fig = plot_go_enrichment(upregulated_enrichment, "upregulated genes", ntop)
         reporter.send_text(f"As upregulated genes, we understand all those with adjusted p-val < {alpha},"
                            f"log2 fold change > {fc_thr}.")
         reporter.send_figure(fig, "Upregulated genes: gene ratio bar plot",
                              save_figure_path=os.path.join(figure_dir,
                                     f"upregulated_enrichment__{contrast_sample1}_vs_{contrast_sample2}.png"))
         plt.close(fig)
-
-        fig = plot_enrichment(downregulated_enrichment, "downregulated genes", ntop)
+        fig = plot_go_enrichment(downregulated_enrichment, "downregulated genes", ntop)
         reporter.send_text(f"As downregulated genes, we understand all those with adjusted p-val < {alpha},"
                            f"log2 fold change < -{fc_thr}.")
         reporter.send_figure(fig, "Downregulated genes: gene ratio bar plot",
@@ -191,11 +185,21 @@ def pairwise_analysis(reporter, dds,
     fig = plot_informed_pairwise_heatmap(res,
                                          subset_normalized_count_table,
                                          subset_normalized_zscore_table,
-                                         alpha, fc_thr, this_samples)
+                                         alpha, fc_thr, this_samples, average_read_counts=False)
     reporter.send_figure(fig, "Heatmap with normalized read counts per sample, "
                               "colored by per-comparison z-score, sorted by absolute log2 fold change",
                          save_figure_path=os.path.join(figure_dir,
                                                        f"heatmap__{contrast_sample1}_vs_{contrast_sample2}.png"))
+    plt.close(fig)
+
+    fig = plot_informed_pairwise_heatmap(res,
+                                         subset_normalized_count_table,
+                                         subset_normalized_zscore_table,
+                                         alpha, fc_thr, this_samples, average_read_counts=True)
+    reporter.send_figure(fig, "Heatmap with normalized read counts per sample, "
+                              "colored by per-comparison z-score, sorted by absolute log2 fold change",
+                         save_figure_path=os.path.join(figure_dir,
+                                                       f"heatmapAvg__{contrast_sample1}_vs_{contrast_sample2}.png"))
     plt.close(fig)
 
     # if interesting genes are defined, do that as well
@@ -211,19 +215,31 @@ def pairwise_analysis(reporter, dds,
                                              subset_normalized_count_table,
                                              subset_normalized_zscore_table,
                                              alpha,
-                                        0, this_samples)
+                                        0, # we wanna show as many interesting genes as possible if the change is statistically significant
+                                                 this_samples, average_read_counts=False)
             reporter.send_figure(fig, "Heatmap with normalized read counts per sample,\n"
                                       "colored by per-comparison z-score, sorted by absolute log2 fold change.\n"
                                       "Only significantly changed genes are shown, no fold change filter is applied apart from visualization clipping.",
                                  save_figure_path=os.path.join(figure_dir,
                                                                f"heatmapOnInteresting__{contrast_sample1}_vs_{contrast_sample2}.png"))
             plt.close(fig)
+
+            fig = plot_informed_pairwise_heatmap(interesting_res,
+                                                 subset_normalized_count_table,
+                                                 subset_normalized_zscore_table,
+                                                 alpha,
+                                                 0, this_samples, average_read_counts=True)
+            reporter.send_figure(fig, "Heatmap with normalized read counts per sample,\n"
+                                      "colored by per-comparison z-score, sorted by absolute log2 fold change.\n"
+                                      "Only significantly changed genes are shown, no fold change filter is applied apart from visualization clipping.",
+                                 save_figure_path=os.path.join(figure_dir,
+                                                               f"heatmapOnInterestingAvg__{contrast_sample1}_vs_{contrast_sample2}.png"))
+            plt.close(fig)
     return res[(res["padj"] < parameters.padj_alpha) & (
         res["log2FoldChange"].abs() > fc_thr)]
 
 
-def plot_bulk_heatmap(normed_counts, normed_zscores, selected_gene_ids, samples, gene_names_mapper):
-    subset_zscores = normed_zscores[selected_gene_ids]
+def plot_bulk_heatmap(normed_counts, normed_zscores, selected_gene_ids, samples, gene_names_mapper, average_values=True):
     subset_counts = normed_counts[selected_gene_ids]
 
     renaming_dict = pd.DataFrame(samples['condition'] + ':' + samples["sample"]).to_dict()[0]
@@ -240,12 +256,34 @@ def plot_bulk_heatmap(normed_counts, normed_zscores, selected_gene_ids, samples,
                                    ) / current_zscore_tab[col].std()
 
     fig, ax = plt.subplots(1, 1, figsize=(1 * len(samples), 0.3 * len(selected_gene_ids)))
-    sns.heatmap(
-        current_zscore_tab.T,
-        annot=np.round(current_tab),
-        vmin=-3, vmax=3, fmt=".8g",
-        ax=ax, cmap="Spectral_r"
-    )
+    if not average_values:
+        sns.heatmap(
+            current_zscore_tab.T,
+            annot=np.round(current_tab),
+            vmin=-3, vmax=3, fmt=".8g",
+            ax=ax, cmap="Spectral_r"
+        )
+    else:
+        current_zscore_tab['samples'] = current_zscore_tab.index.str.split(':').str[0]
+        current_zscore_tab = current_zscore_tab.groupby("samples").mean()
+
+        current_tab = current_tab.T
+        cols = current_tab.columns
+        current_tab['samples'] = current_tab.index.str.split(':').str[0]
+
+        def create_annot(x):
+            mean = np.mean(x)
+            std = np.std(x)
+            return f"{mean:.2f} (s.d. {std:.2f})"
+
+        current_tab = current_tab.groupby("samples").agg({x: create_annot for x in cols})
+
+        sns.heatmap(
+            current_zscore_tab.T,
+            annot=current_tab.T,
+            vmin=-3, vmax=3, fmt="",
+            ax=ax, cmap="Spectral_r"
+        )
     return fig
 
 def plot_individual_gene_boxplot(gene_id, gene_name, samples,
@@ -355,21 +393,52 @@ def bulk_overview_results(collected_res, count_table_df, normed_counts, normed_z
                           ).sort_values(ascending=False)
     most_variable_genes = genewise_std[:ntop].index
     gene_names_mapper = gene_names[['gene_name']].to_dict()['gene_name']
-    fig = plot_bulk_heatmap(normed_counts, normed_zscores, most_variable_genes, samples, gene_names_mapper)
+
     reporter.start_section("Illustratory read count heatmaps")
+    fig = plot_bulk_heatmap(normed_counts, normed_zscores, most_variable_genes, samples, gene_names_mapper,
+                            average_values=False)
     reporter.send_figure(fig,
-                         f"Top {ntop} most variable genes: read count heatmap")
+                         f"Top {ntop} most variable genes: read count heatmap",
+                         save_figure_path=os.path.join(parameters.output_dir,
+                                                       'central_analysis_figures',
+                                                       f"top{ntop}_read_count_heatmap.png"))
+    plt.close(fig)
+
+    fig = plot_bulk_heatmap(normed_counts, normed_zscores, most_variable_genes, samples, gene_names_mapper,
+                            average_values=True)
+    reporter.send_figure(fig,
+                         f"Top {ntop} most variable genes: read count heatmap",
+                         save_figure_path=os.path.join(parameters.output_dir,
+                                                       'central_analysis_figures',
+                                                       f"top{ntop}_read_count_heatmap_AVG.png")
+                         )
     plt.close(fig)
 
     if interesting_genes is not None:
         genewise_std = np.std(normed_counts[interesting_genes['interesting_gene_id'].values], axis=0
                               ).sort_values(ascending=False)
         most_variable_interesting_genes = genewise_std[:ntop].index
-        fig = plot_bulk_heatmap(normed_counts, normed_zscores, most_variable_interesting_genes, samples, gene_names_mapper)
+
         reporter.start_section(
             f"Illustratory read count heatmaps: interesting genes ({parameters.path_to_interesting_genes})")
+        fig = plot_bulk_heatmap(normed_counts, normed_zscores, most_variable_interesting_genes, samples,
+                                gene_names_mapper, average_values=False)
         reporter.send_figure(fig,
-                             f"Top {ntop} most variable interesting genes: read count heatmap")
+                             f"Top {ntop} most variable interesting genes: read count heatmap",
+                             save_figure_path=os.path.join(parameters.output_dir,
+                                                           'central_analysis_figures',
+                                                           f"top{ntop}_interesting_read_count_heatmap.png")
+                             )
+        plt.close(fig)
+
+        fig = plot_bulk_heatmap(normed_counts, normed_zscores, most_variable_interesting_genes, samples,
+                                gene_names_mapper, average_values=True)
+        reporter.send_figure(fig,
+                             f"Top {ntop} most variable interesting genes: read count heatmap",
+                             save_figure_path=os.path.join(parameters.output_dir,
+                                                           'central_analysis_figures',
+                                                           f"top{ntop}_interesting_read_count_heatmap_AVG.png")
+                             )
         plt.close(fig)
 
 
@@ -377,7 +446,11 @@ def bulk_overview_results(collected_res, count_table_df, normed_counts, normed_z
     reporter.start_section("Illustration of most frequently changed genes")
     fig, genes_to_show = plot_lfc_heatmap(collected_res, ntop)
     reporter.send_figure(fig,"Heatmap of most frequently changed genes vs. comparison, "
-                             "each position is (statistically significant) log2 fold change")
+                             "each position is (statistically significant) log2 fold change",
+                         save_figure_path=os.path.join(parameters.output_dir,
+                                                       'central_analysis_figures',
+                                                       f"top{ntop}_freq_changed_heatmap.png")
+                         )
     plt.close(fig)
 
     if interesting_genes is not None:
@@ -385,7 +458,11 @@ def bulk_overview_results(collected_res, count_table_df, normed_counts, normed_z
         fig, interesting_genes_to_show = plot_lfc_heatmap(collected_res[collected_res.index.isin(interesting_genes['interesting_gene_id'].values)],
                                ntop)
         reporter.send_figure(fig, "Heatmap of most frequently changed genes vs. comparison, "
-                                  "each position is (statistically significant) log2 fold change")
+                                  "each position is (statistically significant) log2 fold change",
+                             save_figure_path=os.path.join(parameters.output_dir,
+                                                           'central_analysis_figures',
+                                                           f"top{ntop}_interesting_freq_changed_heatmap.png")
+                             )
         plt.close(fig)
     else:
         interesting_genes_to_show = []

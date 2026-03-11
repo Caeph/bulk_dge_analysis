@@ -41,7 +41,7 @@ class DGE_parameters:
             self.path_to_interesting_genes,
         ]
         self.__optional_parameter_labels = [# "organism info",
-                                            "FDR maximum threshold",
+                                            "Adjusted p-value maximum threshold",
                                             "fold change minimum threshold",
                                             "gene annotation resource",
                                             "no of extreme genes to annotate",

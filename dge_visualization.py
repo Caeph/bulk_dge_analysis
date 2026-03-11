@@ -116,7 +116,7 @@ def plot_MA(res, alpha, annotate_extremes_no):
 
 def plot_volcano(res, alpha, fc_thr, annotate_extremes_no):
     #res = res.sort_values("padj", ascending=True)
-    res = res.dropna()
+    res = res.copy().dropna()
 
     res["gene_color"] = "under alpha, under FC thr."
     res.loc[(res['padj'] < alpha), "gene_color"] = "significant, under FC thr."
@@ -165,15 +165,26 @@ def plot_volcano(res, alpha, fc_thr, annotate_extremes_no):
 _go_analysis_labeling = {
     "GO:BP": ["GO biological process", "blue"],
     "GO:MF": ["GO molecular function", 'green'],
-    "GO:CC": ["GO cellular component", 'orange']
+    "GO:CC": ["GO cellular component", 'orange'],
+    "KEGG": ["KEGG", "violet"]
 }
 
-def plot_enrichment(enriched_processes_df, label, ntop):
+def plot_go_enrichment(enriched_processes_df, label, ntop):
     # counts = enriched_processes_df[['source', 'name']].groupby('source').count().to_dict()['name']
-    fig, axes = plt.subplots(nrows=3,
-                             ncols=1,
-                             sharex=True,
-                             figsize=(15, 10),)
+    if len(enriched_processes_df) == 0:
+        return None
+    nrows = len(enriched_processes_df['source'].unique())
+    if nrows > 1:
+        fig, axes = plt.subplots(nrows=nrows,
+                                 ncols=1,
+                                 sharex=True,
+                                 figsize=(15, 3.5*nrows),)
+    else:
+        fig, ax = plt.subplots(nrows=nrows,
+                                 ncols=1,
+                                 sharex=True,
+                                 figsize=(15, 3.5*nrows), )
+        axes = [ax]
     i = 0
     for name, group in enriched_processes_df.sort_values('name').groupby("source"):
         ax = axes[i]
@@ -197,7 +208,7 @@ def plot_enrichment(enriched_processes_df, label, ntop):
         ax.set_xlabel("gene ratio")
 
     fig.suptitle(
-        f"GO enrichment analysis: {label}",
+        f"Enrichment analysis: {label}",
         fontsize=20,  # larger font
         fontweight="bold",  # bold
         x=0.01,  # move to left (0 = far left, 0.5 = center)
@@ -213,7 +224,12 @@ def plot_informed_pairwise_heatmap(res,
                                    alpha,
                                    fc_thr,
                                    these_samples,
-                                   max_to_show=100):
+                                   max_to_show=100,
+                                   average_read_counts=True
+                                   ):
+    # TODO check and make sure the things align row-wise
+
+    res = res.copy()
     res['abs_log2foldchange'] = res["log2FoldChange"].abs()
     comparison_data = res[(res["padj"] < alpha) & (
                     res['abs_log2foldchange'] >= fc_thr)
@@ -242,7 +258,20 @@ def plot_informed_pairwise_heatmap(res,
     current_tab = current_tab[sorted(current_tab.columns)]
 
     current_tab = pd.merge(current_tab,
-                    comparison_data[['gene_name']], left_index=True, right_index=True)
+                    comparison_data[['gene_name']], left_index=True, right_index=True).drop_duplicates()
+    duplicated_gene_names = current_tab[current_tab["gene_name"].duplicated()]["gene_name"].unique()
+    current_tab.loc[current_tab["gene_name"].isin(duplicated_gene_names), "gene_name"] = (current_tab.loc[
+        current_tab["gene_name"].isin(duplicated_gene_names), "gene_name"] + ' (' +
+        current_tab[current_tab["gene_name"].isin(duplicated_gene_names)].index + ")")
+    # this must be done for comparison_data as well
+    comparison_data.loc[comparison_data["gene_name"].isin(duplicated_gene_names), "gene_name"] = (comparison_data.loc[
+                                                                                              comparison_data[
+                                                                                                  "gene_name"].isin(
+                                                                                                  duplicated_gene_names), "gene_name"] + ' (' +
+                                                                                          comparison_data[comparison_data[
+                                                                                              "gene_name"].isin(
+                                                                                              duplicated_gene_names)].index + ")")
+
     current_tab.index = current_tab["gene_name"]
     current_tab = current_tab.drop(columns=["gene_name"])
 
@@ -250,15 +279,48 @@ def plot_informed_pairwise_heatmap(res,
     for col in current_zscore_tab.columns:
         current_zscore_tab[col] = (current_zscore_tab[col] - current_zscore_tab[col].mean()
                                    ) / current_zscore_tab[col].std()
-    current_zscore_tab = current_zscore_tab.T
 
-    sns.heatmap(
-        current_zscore_tab,
-        ax=axes[0],
-        annot=np.round(current_tab), fmt=".5g",
-        vmin=-2, vmax=2, cmap='Spectral_r',
-        cbar_kws=dict(use_gridspec=True, location="left")
-    )
+
+    if average_read_counts:
+        current_zscore_tab = current_zscore_tab.copy()
+        gene_cols = current_zscore_tab.columns
+        current_zscore_tab["samples"] = current_zscore_tab.index.str.split(":").str[0]
+        current_zscore_tab = current_zscore_tab.groupby("samples").mean()
+
+        genes_to_show = sorted(list(set(current_zscore_tab.columns)))
+        current_zscore_tab = current_zscore_tab[genes_to_show].T
+
+        current_tab = current_tab.T[genes_to_show]
+        current_tab["samples"] = current_tab.index.str.split(":").str[0]
+
+        def create_annot(x):
+            mean = np.mean(x)
+            std = np.std(x)
+            return f"{mean:.2f} (s.d. {std:.2f})"
+
+        current_tab = current_tab.groupby("samples").agg(
+            {col: create_annot for col in gene_cols}
+        )
+        current_tab = current_tab[sorted(current_tab.columns)].T
+
+        sns.heatmap(
+            current_zscore_tab.T[comparison_data['gene_name']].T,
+            ax=axes[0],
+            annot=current_tab.T[comparison_data['gene_name']].T, fmt="",
+            vmin=-2, vmax=2, cmap='Spectral_r',
+            cbar_kws=dict(use_gridspec=True, location="left")
+        )
+
+    else:
+        current_zscore_tab = current_zscore_tab[comparison_data['gene_name']].T
+        sns.heatmap(
+            current_zscore_tab,
+            ax=axes[0],
+            annot=np.round(current_tab.T[comparison_data['gene_name']].T), fmt=".5g",
+            vmin=-2, vmax=2, cmap='Spectral_r',
+            cbar_kws=dict(use_gridspec=True, location="left")
+        )
+
     axes[0].set_ylabel("")
 
     comparison_data.index = comparison_data['gene_name']

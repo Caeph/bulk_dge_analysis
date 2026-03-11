@@ -8,8 +8,6 @@ def enrichment_analysis(query_ensembl_ids, all_tested_ensembl_ids, organism):
         organism=organism,
         query=query_ensembl_ids,
         background=all_tested_ensembl_ids,
-        sources=["GO:BP", "GO:MF", "GO:CC"],
+        sources=["GO:BP", "GO:MF", "GO:CC", "KEGG"],
     )
     return enr
-
-
